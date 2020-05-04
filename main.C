@@ -1,8 +1,6 @@
 // file: main.C for fsabc
 
-// Runs simulations for ABC analysis of fluctuating selection on a
-// polygenic trait. Assuming stabilizing selection with an optimum
-// value that depends on the environment.
+// Runs simulations for ABC inference of selection on a polygenic trait. Assumes a model of environment-dependent directional selection on the trait, with evolution of genetic loci dictated by a genetic architecture. Drift if incorporated via a WF model.
 
 // Requires the following input files:
 // geneFile: point estimates of allele freqs. nloci rows by npop columns, just the initial freqs (as freqs)
@@ -10,8 +8,6 @@
 // neFile: post. samples for the variance effective population size, one row per sample, one column per pop
 // traitFile: trait gen arch. estimates, one row per SNP, pip followed by beta | lambda = 1
 // NOTE: files begin with a row giving the dimensions of the file (row then column)
-
-// Time-stamp: <Friday, 17 August 2012, 14:46 CDT -- zgompert>
 
 #include <cmath>
 #include <iostream>
