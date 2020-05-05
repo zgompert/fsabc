@@ -2,12 +2,19 @@
 
 // Runs simulations for ABC inference of selection on a polygenic trait. Assumes a model of environment-dependent directional selection on the trait, with evolution of genetic loci dictated by a genetic architecture. Drift if incorporated via a WF model.
 
-// Requires the following input files:
-// geneFile: point estimates of allele freqs. nloci rows by npop columns, just the initial freqs (as freqs)
-// envFile: environmental covariates, one row per generation, one column per pop, note that the gen t (the final gen.) should be left off
-// neFile: post. samples for the variance effective population size, one row per sample, one column per pop
-// traitFile: trait gen arch. estimates, one row per SNP, pip followed by beta | lambda = 1
+// This program has three primary modes, one to conduct simulations for inference = "sim" mode, one to conduct posterior predictive simulations = "pred" mode, and one to calculate summary statistics from observed data = "obs" mode
+
+// "sim" mode requires the following files
+// geneFile=point estimates of allele freqs. nloci rows by npop columns, just the initial freqs (as freqs)
+// envFile=environmental covariates, one row per generation, one column per pop, note that the gen t (the final gen.) should be left off
+// neFile=post. samples for the variance effective population size, one row per sample, one column per pop
+// traitFile=trait gen arch. estimates, one row per SNP, pip followed by beta | lambda = 1
+// Additional optional files
+// missingFile=binary indicator variable, was that population x generation sampled (1=TRUE); one row per generation, one column per pop, note that first generation should be left off 
+
 // NOTE: files begin with a row giving the dimensions of the file (row then column)
+
+// "obs" mode requires the following files
 
 #include <cmath>
 #include <iostream>
@@ -40,11 +47,13 @@ int main(int argc, char *argv[]) {
   int nsims = 1000;
   int ss = 0; // 0 = bv ss, 1 = snp ss, 2 = bv and snp ss
   int validate = 0; // set to 1 for cross validation
-  
+  int obsss = 0; // set to 1 for obs summary stats mode
+
   string geneFile = "undefined";
   string envFile = "undefined";
   string neFile = "undefined";
   string traitFile = "undefined";
+  string missingFile = "undefined";
   string resFile = "undefined"; // samples from posterior
   string outFile = "out_fsabc.txt";
   
@@ -53,7 +62,7 @@ int main(int argc, char *argv[]) {
 
   // set defaults
   data.sigma2 = 1;
-  params.smod = 1;
+  params.smod = 0;
   params.fsAlb = -10;
   params.fsAub = 10;
   params.fsBlb = -10;
@@ -68,7 +77,7 @@ int main(int argc, char *argv[]) {
     usage(argv[0]);
   }
   
-  while ((ch = getopt(argc, argv, "g:e:f:t:o:n:s:m:a:c:b:d:w:x:p:v:z:")) != -1){
+  while ((ch = getopt(argc, argv, "g:e:f:t:j:o:n:s:m:a:c:b:d:w:x:p:v:z:q:")) != -1){
     switch(ch){
     case 'g':
       geneFile = optarg;
@@ -81,6 +90,9 @@ int main(int argc, char *argv[]) {
       break;
     case 't':
       traitFile = optarg;
+      break;
+    case 'j':
+      missingFile = optarg;
       break;
     case 'o':
       outFile = optarg;
@@ -118,6 +130,9 @@ int main(int argc, char *argv[]) {
     case 'v':
       validate = atoi(optarg);
       break;
+    case 'q':
+      obsss = atoi(optarg);
+      break;
     case 'z':
       resFile = optarg;
       break;
@@ -138,7 +153,7 @@ int main(int argc, char *argv[]) {
   // read infiles, record genotype likelihoods and data dimensions
   cout << "Reading input from files: " << geneFile << " and " << 
     envFile << endl;
-  getdata(geneFile, envFile, &data);
+  getdata(geneFile, envFile, missingFile, obsss, &data);
 
   // read Ne from a file
   cout << "Reading posterior samples of Ne from " << neFile << endl;
@@ -149,9 +164,10 @@ int main(int argc, char *argv[]) {
   getqtl(traitFile,&data);
 
   // read params if present
-  cout << "Reading parameter estimates for validation " << resFile << endl;
-  getest(resFile,&data);
-
+  if(validate==1){
+    cout << "Reading parameter estimates for validation " << resFile << endl;
+    getest(resFile,&data);
+  }
   
   // memory allocation for params
   params.beta = gsl_vector_calloc(data.nLoci);
@@ -164,20 +180,39 @@ int main(int argc, char *argv[]) {
   // open outfile
   FILE * OUT;
   OUT = fopen(outFile.c_str(), "w");
-  
-  // run wf sims
-  for(x=0; x<nsims; x++){
-    cout << "sim " << x << endl;
-    if(validate==0){
+
+  // "obs" mode
+  if(obsss==1){
+    cout << "Calculating summary statistics for the observed time series" << endl;
+    calcobs(&data, &params, OUT, ss);
+  }
+
+  // "pred" mode
+  else if(validate==1){
+    cout << "Running posterior predictive simulations" << endl;
+    // run wf sims
+    for(x=0; x<nsims; x++){
+      if(((x%100)==0) & (x>0))
+	cout << "Sim. no.: " << x << endl;
+      valsim(&data, &params, OUT);
+      gsl_vector_free(params.sivec); // need to free each time b/c allocated by samqtl
+      // and depends on the # of qtl sampled
+    }
+  }
+
+  // "sim" mode
+  else{
+    cout << "Running simulations for ABC inference" << endl;
+    // run wf sims
+    for(x=0; x<nsims; x++){
+      if(((x%100)==0) & (x>0))
+	cout << "Sim. no.: " << x << endl;
       runsim(&data, &params, x, ss);
       // write sims
       writesim(&data, &params, OUT, ss);
+      gsl_vector_free(params.sivec); // need to free each time b/c allocated by samqtl
+      // and depends on the # of qtl sampled
     }
-    else if(validate==1){
-      valsim(&data, &params, x, OUT);
-    }
-    gsl_vector_free(params.sivec); // need to free each time b/c allocated by samqtl
-    // and depends on the # of qtl sampled
   }
 
   // close outfile

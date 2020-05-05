@@ -19,17 +19,20 @@ using namespace std;
 // print software usage
 void usage(char * name){
   fprintf(stdout,"\n%s version %s\n\n", name, VERSION);
-  fprintf(stdout, "Usage: abcfs -g genefile -e envfile -f nefile -t traitfile [options]\n");
+  fprintf(stdout, "Usage: fsabc -g genefile -e envfile -f nefile -t traitfile [options]\n");
+  fprintf(stdout, "Use -v 1 for predictive mode, -q 1 for observed mode,\n or leave both 0 (default) for simulation model\n\n");
   fprintf(stdout, "-g     Infile with allele frequency data\n");
   fprintf(stdout, "-e     Infile with environmental covariate data\n");
   fprintf(stdout, "-f     Infile with varNe estimates\n");
   fprintf(stdout, "-t     Infile with trait genetic arch. estimates\n");
-  fprintf(stdout, "-o     Outfile for simulation summary stats. [out_fsabc.txt]\n");
+  fprintf(stdout, "-j     (optional) Infile with gens. between samples\n");
+  fprintf(stdout, "-z     (optional) Infile parameter posterior samples\n");
+  fprintf(stdout, "-v     Binary, run posterior pred. validation mode [0]\n");
+  fprintf(stdout, "-q     Binary, run observed summary stats. mode [0]\n");
+  fprintf(stdout, "-o     Outfile for simulated or obs. summary stats. [out_fsabc.txt]\n");
   fprintf(stdout, "-n     Number of simulations [1000]\n");
   fprintf(stdout, "-s     SS to print: 0 = bv, 1 = snp, 2 = both [0]\n");
   fprintf(stdout, "-m     Selection model: 0 = linear, 1 = step, 2 = sigmoid [0]\n");
-  // fprintf(stdout, "-w     Lower bnd. on U prior for w [1]\n");
-  //fprintf(stdout, "-x     Upper bnd. on U prior for w [8]\n");
   fprintf(stdout, "-p     Prior prob. of non-zero selection by component [0.5]\n");
   fprintf(stdout, "-a     Lower bnd. on U prior for sel. function intercept [-10]\n");
   fprintf(stdout, "-c     Upper bnd. on U prior for sel. function intercept [10]\n");
@@ -45,44 +48,12 @@ void usage(char * name){
 // ------ Functions for input and output ---------------
 
 // read input from the infiles
-void getdata(string geneFile, string envFile, dataset * data){
+void getdata(string geneFile, string envFile, string missingFile, int obsss, dataset * data){
   int i, j;
   string line, element;
   ifstream infile;
   istringstream stream;
 
-  // read initial allele freq. data
-  infile.open(geneFile.c_str());
-  if (!infile){
-    cerr << "Cannot open file " << geneFile << endl;
-    exit(1);
-  }
-
-  // read line with data dimensions
-  getline(infile, line);
-  stream.str(line);
-  stream.clear();
-  stream >> element; // number of loci
-  data->nLoci = atoi(element.c_str()); 
-  stream >> element; // number of populations
-  data->nPops = atoi(element.c_str());  
-
-  // dynamic memory allocation for allele frequency data
-  data->p0 = gsl_matrix_calloc(data->nLoci, data->nPops);
-  
-  // read and store allele frequencies
-  for(i=0; i<data->nLoci; i++){
-    getline(infile, line); // data for one locus
-    stream.str(line);
-    stream.clear();
-    for(j=0; j<data->nPops; j++){
-      stream >> element;
-      gsl_matrix_set(data->p0,i, j, atof(element.c_str()));
-		      
-    }
-  }
-  infile.close();
- 
   // read environmental covariate, single column of values
   infile.open(envFile.c_str());
   if (!infile){
@@ -96,7 +67,8 @@ void getdata(string geneFile, string envFile, dataset * data){
   stream >> element; // number of gens
   data->nGens = atoi(element.c_str()); 
   stream >> element; // number of populations
-
+  data->nPops = atoi(element.c_str()); 
+  
   // dynamic memory allocation of env data
   data->envData = gsl_matrix_calloc(data->nGens-1, data->nPops);
   
@@ -113,6 +85,82 @@ void getdata(string geneFile, string envFile, dataset * data){
   }
   infile.close();
 
+  
+  // read initial allele freq. data (full set of af data for obs. ss)
+  infile.open(geneFile.c_str());
+  if (!infile){
+    cerr << "Cannot open file " << geneFile << endl;
+    exit(1);
+  }
+
+  // read line with data dimensions
+  getline(infile, line);
+  stream.str(line);
+  stream.clear();
+  stream >> element; // number of loci
+  data->nLoci = atoi(element.c_str()); 
+  stream >> element; // number of populations or pops. x gens for observed
+
+
+  if(obsss==1){ // for obs. ss calculations
+    // dynamic memory allocation for allele frequency data
+    data->pall = gsl_matrix_calloc(data->nLoci, data->nPops * data->nGens);
+    
+    // read and store allele frequencies
+    for(i=0; i<data->nLoci; i++){
+      getline(infile, line); // data for one locus
+      stream.str(line);
+      stream.clear();
+      for(j=0; j<(data->nPops*data->nGens); j++){
+	stream >> element;
+	gsl_matrix_set(data->pall,i, j, atof(element.c_str()));
+      }
+    }
+    infile.close();
+  }
+
+  else{ // for all simulation-based analyses
+    // dynamic memory allocation for allele frequency data
+    data->p0 = gsl_matrix_calloc(data->nLoci, data->nPops);
+    
+    // read and store allele frequencies
+    for(i=0; i<data->nLoci; i++){
+      getline(infile, line); // data for one locus
+      stream.str(line);
+      stream.clear();
+      for(j=0; j<data->nPops; j++){
+	stream >> element;
+	gsl_matrix_set(data->p0,i, j, atof(element.c_str()));
+      }
+    }
+    infile.close();
+  }
+      
+  // dynamic memory allocation for number of gens between samples
+  data->sampledData = gsl_matrix_int_calloc(data->nGens-1, data->nPops);
+  gsl_matrix_int_set_all(data->sampledData, 1); // defaults to one generation spacing
+  infile.open(missingFile.c_str());
+  if (infile){ // optional file was included
+    cout << "Reading optional file with generation spacing" << endl;
+    getline(infile, line);
+    stream.str(line);
+    stream.clear();
+    stream >> element; // number of gens - 1
+    stream >> element; // number of populations
+
+    // loop through file, one row per gen (-1) one column per pop
+    for(i=0; i<(data->nGens-1); i++){
+      stream.clear();
+      getline(infile, line);
+      stream.str(line);
+      stream.clear();
+      for(j=0; j<data->nPops; j++){
+	stream >> element;
+	gsl_matrix_int_set(data->sampledData, i, j, atoi(element.c_str()));
+      }
+    }
+    infile.close();
+  }
 }
 
 // read existing estimates of Ne
@@ -194,45 +242,45 @@ void getqtl(string traitFile, dataset * data){
 
 }
 
-// read existing estimates of Ne
-void getne(string neFile, dataset * data){
-  int i, j;
-  string line, element;
-  ifstream infile;
-  istringstream stream;
+// // read existing estimates of Ne
+// void getne(string neFile, dataset * data){
+//   int i, j;
+//   string line, element;
+//   ifstream infile;
+//   istringstream stream;
 
-  // read ne data, first line has dimensions, combes by samples, followed by samples of Ne
-  infile.open(neFile.c_str());
-  if (!infile){
-    cerr << "Cannot open file " << neFile << endl;
-    exit(1);
-  }
+//   // read ne data, first line has dimensions, combes by samples, followed by samples of Ne
+//   infile.open(neFile.c_str());
+//   if (!infile){
+//     cerr << "Cannot open file " << neFile << endl;
+//     exit(1);
+//   }
 
-  // read line with data dimensions
-  getline(infile, line);
-  stream.str(line);
-  stream.clear();
-  stream >> element; // number of posterior samples
-  data->nNeSams = atoi(element.c_str());
-  stream >> element; // number of pops 
+//   // read line with data dimensions
+//   getline(infile, line);
+//   stream.str(line);
+//   stream.clear();
+//   stream >> element; // number of posterior samples
+//   data->nNeSams = atoi(element.c_str());
+//   stream >> element; // number of pops 
  
 
-  // dynamic memory allocation for existing Ne estimates
-  data->ne = gsl_matrix_calloc(data->nNeSams, data->nPops);
+//   // dynamic memory allocation for existing Ne estimates
+//   data->ne = gsl_matrix_calloc(data->nNeSams, data->nPops);
 
-  // read and store Ne estimates
-  for(i=0; i<data->nNeSams; i++){
-    getline(infile, line); 
-    stream.str(line);
-    stream.clear();
-    for(j=0; j<data->nPops; j++){
-      stream >> element;
-      gsl_matrix_set(data->ne, i, j, atof(element.c_str()));
-    }
-  }
-  infile.close();
+//   // read and store Ne estimates
+//   for(i=0; i<data->nNeSams; i++){
+//     getline(infile, line); 
+//     stream.str(line);
+//     stream.clear();
+//     for(j=0; j<data->nPops; j++){
+//       stream >> element;
+//       gsl_matrix_set(data->ne, i, j, atof(element.c_str()));
+//     }
+//   }
+//   infile.close();
 
-}
+// }
 
  // read in parameter estimates for posterior predictive check
 void getest(string resFile, dataset * data){
@@ -243,7 +291,7 @@ void getest(string resFile, dataset * data){
   istringstream stream;
 
   // read parameter estimates, first line has dimensions, samples by params, followed by samples of parameters
-  infile.open(resile.c_str());
+  infile.open(resFile.c_str());
   if (!infile){
     cerr << "Cannot open file " << resFile << endl;
     exit(1);
@@ -254,9 +302,9 @@ void getest(string resFile, dataset * data){
   stream.str(line);
   stream.clear();
   stream >> element; // number of samples
-  Ns = atoi(elemeant.c_str());
+  Ns = atoi(element.c_str());
   stream >> element; // number of params
-  Np = atoi(element.c.str());
+  Np = atoi(element.c_str());
 
   // dynamic memory allocation for parameters
   data->params = gsl_matrix_calloc(Ns, Np);
@@ -310,7 +358,6 @@ void runsim(dataset * data, param * params, int x, int ss){
   for(j=0; j<data->nPops; j++){
     simpop(data, params, j);		   
   }
-
   // compute derived parameters
   compdpar(data, params);
 
@@ -345,7 +392,8 @@ void samqtl(dataset * data, param * params){
 
 // simulate evolution for one population given a selection differential
 void simpop(dataset * data, param * params, int j){
-  int i, k, x;
+  int i, k, x, ii;
+  int interval;
   double S, si;
   double p, dp, pprime;
   unsigned int Ne;
@@ -354,7 +402,7 @@ void simpop(dataset * data, param * params, int j){
   // sample posterior value of Ne
   x = gsl_ran_flat(r, 0, data->nNeSams);
   Ne = floor(gsl_matrix_get(data->ne, x, j));
-  cout << Ne << endl;
+  //cout << Ne << endl;
 
   // set initial allele freqs. to p0
   for(i=0; i<data->nLoci; i++){
@@ -364,7 +412,7 @@ void simpop(dataset * data, param * params, int j){
   
   // sims
   for(k=0; k<(data->nGens-1); k++){
-    N = 0;
+
     // calculate the selection differential
     if(params->smod == 0) // linear
       S = params->fsA + params->fsB * gsl_matrix_get(data->envData, k, j);
@@ -375,44 +423,52 @@ void simpop(dataset * data, param * params, int j){
       else
 	S = params->fsA + params->fsB;
     }
-
+    
     else
       S = params->fsA + (params->fsB - params->fsA)/
 	(exp(-1 * params->fsC *  gsl_matrix_get(data->envData, k, j)));
-      
-    
-    gsl_vector_set(params->Svec, j * (data->nGens-1) + k, S);
-    
-    // calculate/simulate dp by selection and drift for each SNP
-    for(i=0; i<data->nLoci; i++){
-      if( gsl_vector_get(params->beta, i) != 0){ // SNP has effect on trait
-	
-	si = gsl_vector_get(params->beta, i) * (S/data->sigma2); // from L&W 5.21
-	// note that this is an approximation; this is a good approximation when z ~ N
-	// it is a first order approximation, won't work if selection is on variance rather
-	// than the mean of the trait
-	gsl_vector_set(params->sivec, N + k * params->Nqtl +
-		       j * (data->nGens - 1) * params->Nqtl,
-		       abs(si));
-	dp =  si * gsl_matrix_get(params->pp, i, j * data->nGens + k); // from L&W 5.8b
-	N++;
-      }
-      else{
-	dp = 0;
-      }
 
-      pprime = dp + gsl_matrix_get(params->pp, i, j * data->nGens + k);
-      if(pprime > 1)
-	pprime = 1;
-      if(pprime < 0)
-	pprime = 0;
+ 
+    gsl_vector_set(params->Svec, j * (data->nGens-1) + k, S);
+
+    interval = gsl_matrix_int_get(data->sampledData, k, j); // spacing
+    for(i=0; i<data->nLoci; i++){
+      p = gsl_matrix_get(params->pp, i, j * data->nGens + k);
+      for(ii=0; ii<interval; ii++){ // repeate for number of intervals between samples
+	N = 0;
+	// calculate/simulate dp by selection and drift for each SNP
+	
+	if( gsl_vector_get(params->beta, i) != 0){ // SNP has effect on trait
+	
+	  si = gsl_vector_get(params->beta, i) * (S/data->sigma2); // from L&W 5.21
+	  // note that this is an approximation; this is a good approximation when z ~ N
+	  // it is a first order approximation, won't work if selection is on variance rather
+	  // than the mean of the trait
+	  gsl_vector_set(params->sivec, N + k * params->Nqtl +
+			 j * (data->nGens - 1) * params->Nqtl,
+			 abs(si));
+	  dp =  si * p; // from L&W 5.8b
+	  N++;
+	}
+	else{
+	  dp = 0;
+	}
+
+	pprime = dp + p;
+	if(pprime > 1)
+	  pprime = 1;
+	if(pprime < 0)
+	  pprime = 0;
       
-      // sample new pi
-      p = gsl_ran_binomial(r, pprime, 2 * Ne)/(2.0 * Ne);
-      gsl_matrix_set(params->pp, i, j * data->nGens + k + 1, p); // store allele freq.
-      // obs dp
-      dp = p - gsl_matrix_get(params->pp, i, j * data->nGens + k);
-      gsl_matrix_set(params->dpp, i, j * (data->nGens - 1) + k, dp); // store allele freq. change
+	// sample new p_i
+	p = gsl_ran_binomial(r, pprime, 2 * Ne)/(2.0 * Ne);
+	if(ii == (interval-1)){ // final pass, store it
+	  gsl_matrix_set(params->pp, i, j * data->nGens + k + 1, p); // store allele freq.
+	  // obs dp
+	  dp = p - gsl_matrix_get(params->pp, i, j * data->nGens + k);
+	  gsl_matrix_set(params->dpp, i, j * (data->nGens - 1) + k, dp); // store allele freq. change
+	}
+      }
     }
   }
 }
@@ -558,7 +614,7 @@ void writesim(dataset * data, param * params, FILE * OUT, int ss){
 }
 
 // validate, simulate data and generate new ss
-void valsim(dataset * data, param * params, int x, FILE * OUT){
+void valsim(dataset * data, param * params, FILE * OUT){
 
   int i, j, k, q;
   int xx;
@@ -577,7 +633,6 @@ void valsim(dataset * data, param * params, int x, FILE * OUT){
   xx = (int) floor(x);
   params->fsA = gsl_matrix_get(data->params, xx, 0);
   params->fsB = gsl_matrix_get(data->params, xx, 1);
- 
 
   if(params->smod > 0) // sigmoid or step function must have slope
     params->fsC = gsl_matrix_get(data->params, xx, 2);
@@ -603,14 +658,68 @@ void valsim(dataset * data, param * params, int x, FILE * OUT){
   }
   
   gsl_sort_vector(mudpv);
-  
+
+      
   for(q=1; q<=9; q++){
     qn = (double) q/10.0;
-    qval = gsl_stats_quantile_from_sorted_data(mudpv->data,mudpv->data->size,1,qn);
+    qval = gsl_stats_quantile_from_sorted_data(mudpv->data,1,mudpv->size,qn);
     fprintf(OUT,"%.5f ", qval);
   }
   fprintf(OUT,"\n");
   
   gsl_vector_free(mudpv);
 }
+
+// wrapper function for observed summary statistics
+void calcobs(dataset * data, param * params, FILE * OUT, int ss){
+  int i;
   
+  // QTL effects
+  samqtl(data, params); // users can supply model-averaged with pp 1 instead
+  
+  // calculate obs.  changes in allele frequncy
+  calcobsdpp(data, params);
+  
+  // calculate and store the summary statistics
+  for(i=0; i<data->nLoci; i++){
+    if(ss > 0)
+      calcss(data, params, i);
+  }
+  
+  if((ss == 0) | (ss == 2))
+    calcssbv(data, params);
+
+  // write results
+  if((ss == 0) | (ss == 2)){
+    fprintf(OUT, " %.3f %.5f", params->ssMudpBv, params->ssEnvcovBv);
+  }
+  if(ss > 0){
+    // write ss, sum of dp
+    for(i=0; i<data->nLoci; i++){
+      fprintf(OUT, " %.3f", gsl_vector_get(params->ssSumdp, i));
+    }
+    // write ss, dp x env covariance
+    for(i=0; i<data->nLoci; i++){
+      fprintf(OUT, " %.5f", gsl_vector_get(params->ssEnvcov, i));
+    }
+  }
+  fprintf(OUT,"\n");
+   
+}
+  
+// calculate observed change in allele frequency
+void calcobsdpp(dataset * data, param * params){
+  int i, j, k;
+  double dp, pp0, pp1;
+
+  for(j=0; j<data->nPops; j++){
+    for(k=0; k<(data->nGens-1); k++){
+      for(i=0; i<data->nLoci; i++){
+	pp0 = gsl_matrix_get(data->pall, i, j * data->nGens + k);
+	pp1 = gsl_matrix_get(data->pall, i, j * data->nGens + k + 1);
+	dp = pp1 - pp0;
+	gsl_matrix_set(params->dpp, i, j * (data->nGens - 1) + k, dp);
+      }
+    }
+  }
+}

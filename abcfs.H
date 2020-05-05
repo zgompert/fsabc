@@ -11,7 +11,7 @@
 #include <gsl/gsl_sort.h>
 
 // macro definitions
-#define VERSION "0.1 -- 01 June 2019"
+#define VERSION "0.2 -- 01 June 2020"
 
 extern gsl_rng * r;
 // function declarations
@@ -27,7 +27,9 @@ struct dataset{
   // could make this population specific
     
   gsl_matrix * p0; // initial allele freq, nLoci x nPops
+  gsl_matrix * pall; // for obs. ss, allele freqs, nLoic x (nPops x nGens); all gens for pop 0 first
   gsl_matrix * envData; // environmental data, nGens(-1) x nPops
+  gsl_matrix_int * sampledData; // binary indicator  varaible, denotes number of actual generations between samples, nGens(-1) x nPops
   gsl_matrix * ne; // external samples of Ne, nNeSams x nPops; assumes constant per pop
   gsl_matrix * qtl; // pip and beta, nrow = nLoci, ncol = 2 pip then beta
 
@@ -75,7 +77,7 @@ struct param{
 
 // function definitions
 void usage(char * name);
-void getdata(string geneFile, string envFile, dataset * data);
+void getdata(string geneFile, string envFile, string missingFile, int obsss, dataset * data);
 void getne(string neFile, dataset * data);
 void getqtl(string traitFile, dataset * data);
 void getest(string resFile, dataset * data);
@@ -86,4 +88,6 @@ void calcss(dataset * data, param * params, int i);
 void calcssbv(dataset * data, param * params);
 void writesim(dataset * data, param * params, FILE * OUT, int ss);
 void compdpar(dataset * data, param * params);
-void valsim(dataset * data, param * params, int x, FILE * OUT);
+void valsim(dataset * data, param * params, FILE * OUT);
+void calcobsdpp(dataset * data, param * params);
+void calcobs(dataset * data, param * params, FILE * OUT, int ss);
