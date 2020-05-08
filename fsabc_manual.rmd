@@ -1,0 +1,124 @@
+---
+title: Manual for `fsabc` version 0.2
+author: Zach Gompert
+date: 8, May, 2020
+output: pdf_document
+---
+
+#What is `fsabc`?
+
+`fsabc` implements an approximate Bayesian computation (ABC) method to detect and quantify fluctuating selection on polygenic traits from time-series data. Phenotypic selection is modeled as an explicit function of the state of the environment. The population-genomic consequences of selection are the modeled based on estimated genotype-phenotype associations. This allows inferences to be informed by patterns of change across multiple genetic loci, populations, and  generations. The program `fsabc` is written in `C++` with the Gnu Scientific Library (GSL). It is made available is source code. See Gompert & Bergland (XXXX) for a full description and evaluation of the method. Herein, we focus on how to install and run the program. 
+
+#How to install `fsabc`
+
+These instructions assume you are using a Linux operating system, such as Ubuntu, but should work with Mac OSX as well if the appropriate utilities have been installed. 
+
+You can download (clone) the source code, manual and example files for `fsabc` from `GitHub`. 
+
+```
+git clone https://github.com/zgompert/fsabc.git
+```
+
+Once you have downloaded the source code, navigate to the `fsabc` directory. You can compile the the source code by typing the following at the command line. You must have the [Gnu Scientific Library](https://www.gnu.org/software/gsl/) installed and in your path.
+
+```
+g++ -O2 -Wall -o fsabc  main.C func.C -lm -lgsl -lgslcblas
+```
+
+This creates an executable, `fsabc`. Running the program without ivoking any options prints a help menu listing the command line options.
+
+```{bash process, echo=TRUE}
+./fsabc
+```
+
+#Running the program
+
+Command line options are listed above. Here, I expand on these, and provide detailed descriptions of file formats.
+
+**`-g` = Infile with allele frequency data.** This file has one of two formats depending on the anlysis mode. 
+
+When running the program in simulation or posterior predictive mode, the first row is a header with two values (separated by white space), the number of genetic markers and the number of populations. This is followed by one row per genetic marker. Each row gives the initial allele frequency (for one of the two alleles, e.g., the minor allele) for each population. Thus, there are as many columns as populations. See `sim_p0.txt` for an example with 100 SNPs and 10 populations (in this example all 10 populations have the same initial allele frequencies). 
+
+When running the program to compute summary statistics for the observed data, the first row is a header with two values (separated by white space), the number of genetic markers and the product of the number of populations and generations. This is followed by one row per genetic marker. Each row gives the allele frequency (for one of the two alleles, e.g., the minor allele) for each population and generation. Use the following order: Pop0\_Gen0 Pop0\_Gen1 ... Pop0\_Gen10 Pop1\_Gen0 ... Pop1\_Gen10 ... Pop5\_Gen10. See `sim_p0.txt` for an example with 100 SNPs and 10 populations (in this example all 10 populations have the same initial allele frequencies). See `out_example_p.txt`. 
+
+**`-e` = Infile with environmental covariate data.** The first row is a header with the number of populations and number of generations. Each subsequent row gives the environmental covariate data for one population, with one column per generation. Note that the last generation (column) is not used as it would apply to the expected allele frequency in the following (not yet sampled) generation. See `sim_env.txt` for an example with 10 populations and 10 generations.
+
+**`f` = Infile with varNe estimates.** This file contains estimates of the variance effective population size for each population. The method accounts for uncertainty in Ne, and thus expects samples (values) from the posterior distribution of Ne. If this is not available, a single value can be used instead. The first row is a header with the number of samples (set to 1 if only a point estimate is available) and number of populations. Each subsequent row contains a possible value (posterior sample) of Ne for each population. See `sim_ne.txt` for an example with 100 samples from the posterior and 10 populations.
+
+**`t` = Infile with trait genetic arch. estimates.** This file contains information on the genotype-phenotype map. The header row gives the number of genetic markers followed by the number of columns (always two, see below). This is followed by one row per genetic marker. The first column gives probability that the marker is associated with or affects the trait (i.e., the posterior inclusions probability). If the value is exactly 0, there is no need to include the marker in this file or in the allele frequency file. In other words, only markers with non-zero probabilities of being included in the gentoype-phenotype map should be included. The second column gives an estimate of the marker's phenotypic effect conditional on it having a non-zero effect (or association). See `sim_trait.txt` for an example with 100 genetic markers known to be associated with a trait of interest (i.e., all have posterior inclusion probabilities of 1.0).
+
+#Example analysis
+
+Compute summary statistics for the observed data.
+
+```
+./fsabc -g sim_example_p.txt -e sim_env.txt -f sim_ne.txt -t sim_trait.txt \
+ -n 1 -m 0 -q 1 -o obs_example.txt
+```
+
+Generate 1 million simulated sets of parameters and summary statistics
+
+```
+./fsabc -g sim_p0.txt -e sim_env.txt -f sim_ne.txt -t sim_trait.txt \
+ -n 1000000 -m 0 -a -0.1 -b -0.1 -c 0.1 -d 0.1 -o sims_example.txt 
+```
+
+Summarize the posterior in `R`
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=70)}
+library(abc)
+library(scales)
+
+## read in 1 million simulations
+sims<-matrix(scan("sims_example.txt",n=1000000*8,sep=" "),nrow=1000000,ncol=8,byrow=TRUE)
+
+## read in obs. summary statistics
+obs<-read.table("obs_example.txt")
+
+## true values for a and b... from out_example.txt
+a<-0.022;b<--0.073
+
+## split matrixes and name columns
+ss<-sims[,7:8]
+colnames(ss)<-c("ss.mn","ss.cov")
+
+parm<-sims[,1:6]
+colnames(parm)<-c("a","b","p3","p4","p5","p6")
+o<-abc(target=as.matrix(obs),param=parm,sumstat=ss,method="loclinear",tol=0.001)
+
+summary(o)
+
+library(scales)
+c1<-alpha("darkgray",.7)
+c2<-alpha("black",.7)
+
+par(mfrow=c(1,2))
+ddpr<-density(parm[,1],from=-.1,to=.1)
+ddpost<-density(o$adj.values[,1],from=-.1,to=.1)
+plot(ddpr,type='n',xlab="Parameter (a)",main="")
+polygon(c(ddpr$x,rev(ddpr$x)),c(ddpr$y,rep(0,length(ddpr$y))),col=c1,border=c1)
+polygon(c(ddpost$x,rev(ddpost$x)),c(ddpost$y,rep(0,length(ddpost$y))),col=c2,border=c2)
+abline(v=a,col="red",lwd=1.5)
+
+ddpr<-density(parm[,2],from=-.1,to=.1)
+ddpost<-density(o$adj.values[,2],from=-.1,to=.1)
+plot(ddpr,type='n',xlab="Parameter (b)",main="")
+polygon(c(ddpr$x,rev(ddpr$x)),c(ddpr$y,rep(0,length(ddpr$y))),col=c1,border=c1)
+polygon(c(ddpost$x,rev(ddpost$x)),c(ddpost$y,rep(0,length(ddpost$y))),col=c2,border=c2)
+abline(v=b,col="red",lwd=1.5)
+
+## summarize the relationship between S and the environment
+x<-seq(-2,2,0.01) ## approx. range of environmental variation
+nx<-length(x)
+y<-matrix(NA,nrow=dim(o$adj.values)[1],ncol=nx)
+for(i in 1:dim(o$adj.values)[1]){
+	## linear model, computer over the post.
+	y[i,]<-o$adj.values[i,1] + x * o$adj.values[i,2]
+}
+## compute 91% credible intervals (91 is just for fun, compute what you want)
+est<-apply(y,2,quantile,probs=c(.5,.045,.955))
+par(mfrow=c(1,1))
+plot(x,est[1,],col="blue",type='l',lwd=1.8,xlab="Environment",ylab="Selection differntial (S)",cex.lab=1.2)
+polygon(c(x,rev(x)),c(est[2,],rev(est[3,])),col=alpha("blue",.4),border=NA)
+
+```
