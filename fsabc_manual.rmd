@@ -5,9 +5,11 @@ date: 8, May, 2020
 output: pdf_document
 ---
 
-#What is `fsabc`?
+#Overview
 
-`fsabc` implements an approximate Bayesian computation (ABC) method to detect and quantify fluctuating selection on polygenic traits from time-series data. Phenotypic selection is modeled as an explicit function of the state of the environment. The population-genomic consequences of selection are the modeled based on estimated genotype-phenotype associations. This allows inferences to be informed by patterns of change across multiple genetic loci, populations, and  generations. The program `fsabc` is written in `C++` with the Gnu Scientific Library (GSL). It is made available is source code. See Gompert & Bergland (XXXX) for a full description and evaluation of the method. Herein, we focus on how to install and run the program. 
+`fsabc` implements an approximate Bayesian computation (ABC) method to detect and quantify fluctuating selection on polygenic traits from time-series data. Phenotypic selection is modeled as an explicit function of the state of the environment. The population-genomic consequences of selection are the modeled based on estimated genotype-phenotype associations. This allows inferences to be informed by patterns of change across multiple genetic loci, populations, and  generations. The goal of the model is to estimate the intensity of selection on the trait and how this varies by environment, as well as the extent to which this translates into selection on different genetic loci. Key assumptions of the model are that selection is always directional, that each locus explains a small proportion of the phenotypic variance (either because the trait is highly polygenic or has a large environmental variance) and that the causal variants (or linked loci) exhibit minimal linkage disequilibrium with each other such that each experiences genetic drift independently. The model also assumes that, at least over the duration of the population-genomic time series, mutation and gene flow are negligible and can be ignored.
+
+The program `fsabc` is written in `C++` with the Gnu Scientific Library (GSL). It is made available is source code. See Gompert & Bergland (XXXX) for a full description and evaluation of the method. Herein, we focus on how to install and run the program. 
 
 #How to install `fsabc`
 
@@ -31,7 +33,22 @@ This creates an executable, `fsabc`. Running the program without ivoking any opt
 ./fsabc
 ```
 
-#Running the program
+#Input data and file formats
+
+`fsabc` requires four data sources. 
+
+
+* **Estimates of allele frequencies in one or more populations for multiple time points (ideally consecutive generations).** The method assumes these are known with little or no error. The method requires a set of genetic markers (e.g., SNPs) known to affect the trait of interest, or as will be more commonly the case, a set of markers statistically associated with the trait (i.e., in linkage disequilibrium with the unknown causal variants). 
+
+* **Information on the effects (associations) of the genetic markers with the trait.** The method assume each marker has a probability of effecting or being associated with the trait and an effect conditional on a true association. The probability of association can be set to 1 for a set of genetic variants to indicate they are known to directly affect the trait; such confidence might be appropriate if genotpye-phenotype associations have been validated by genetic manipulations.
+
+* **Estimates of the variance effective population size.** These can be estimated using either LD-based methods or change over time for a set of genetic markers not associated with the (putatively) selected trait. The proposed method accounts for uncertainty in estimates of $N_e$ by integrating over a posterior distribution.
+ 
+* **Measurements of the enrionmental covariate.** This covariate should be measured in each population and generation (or time step).
+
+
+
+
 
 Command line options are listed above. Here, I expand on these, and provide detailed descriptions of file formats.
 
@@ -43,9 +60,37 @@ When running the program to compute summary statistics for the observed data, th
 
 **`-e` = Infile with environmental covariate data.** The first row is a header with the number of populations and number of generations. Each subsequent row gives the environmental covariate data for one population, with one column per generation. Note that the last generation (column) is not used as it would apply to the expected allele frequency in the following (not yet sampled) generation. See `sim_env.txt` for an example with 10 populations and 10 generations.
 
-**`f` = Infile with varNe estimates.** This file contains estimates of the variance effective population size for each population. The method accounts for uncertainty in Ne, and thus expects samples (values) from the posterior distribution of Ne. If this is not available, a single value can be used instead. The first row is a header with the number of samples (set to 1 if only a point estimate is available) and number of populations. Each subsequent row contains a possible value (posterior sample) of Ne for each population. See `sim_ne.txt` for an example with 100 samples from the posterior and 10 populations.
+**`-f` = Infile with varNe estimates.** This file contains estimates of the variance effective population size for each population. The method accounts for uncertainty in Ne, and thus expects samples (values) from the posterior distribution of Ne. If this is not available, a single value can be used instead. The first row is a header with the number of samples (set to 1 if only a point estimate is available) and number of populations. Each subsequent row contains a possible value (posterior sample) of Ne for each population. See `sim_ne.txt` for an example with 100 samples from the posterior and 10 populations.
 
-**`t` = Infile with trait genetic arch. estimates.** This file contains information on the genotype-phenotype map. The header row gives the number of genetic markers followed by the number of columns (always two, see below). This is followed by one row per genetic marker. The first column gives probability that the marker is associated with or affects the trait (i.e., the posterior inclusions probability). If the value is exactly 0, there is no need to include the marker in this file or in the allele frequency file. In other words, only markers with non-zero probabilities of being included in the gentoype-phenotype map should be included. The second column gives an estimate of the marker's phenotypic effect conditional on it having a non-zero effect (or association). See `sim_trait.txt` for an example with 100 genetic markers known to be associated with a trait of interest (i.e., all have posterior inclusion probabilities of 1.0).
+**`-t` = Infile with trait genetic arch. estimates.** This file contains information on the genotype-phenotype map. The header row gives the number of genetic markers followed by the number of columns (always two, see below). This is followed by one row per genetic marker. The first column gives probability that the marker is associated with or affects the trait (i.e., the posterior inclusions probability). If the value is exactly 0, there is no need to include the marker in this file or in the allele frequency file. In other words, only markers with non-zero probabilities of being included in the gentoype-phenotype map should be included. The second column gives an estimate of the marker's phenotypic effect conditional on it having a non-zero effect (or association). See `sim_trait.txt` for an example with 100 genetic markers known to be associated with a trait of interest (i.e., all have posterior inclusion probabilities of 1.0).
+
+**`-j` = (Optional) infile with gens. betwen samples.** By default, the software assumes one generation spacing between samples for population allele frequencies (and corresponding environmental data). This optional file allows other spacing to be specified. If included, this file has a header row with the number of generations minus one and the number of populations. Each subsequent row gives the spacing for the samples for a population, where the value given is the number of generations (this is used for simulating evolution). The first column gives the interval between the first and second sample, hence the need for one fewer entry than the number of  generations.
+
+**`z` = (Optional) infile with parameter posterior samples.** This is used only for posterior predictive (validation) mode. This file contains samples from the posterior distribution for the selection differential model paramters a, b, and c (if c is in the model). The first row is a header with the number of samples and parameters. This is followed by one row per posterior sample with the parameter values.
+
+**`-v` = Binary, run posterior pred. validation mode.** Set to 1 (true) to run the program in posterior predictive mode. The defaul is 0 (false).
+
+**`-q` = Binary, run observed summary stats. mode.**  Set to 1 (true) to compute summary statistics from the observed data (rather than run simulations). The default is 0 (false).
+
+**`-o` = Outfile for simulated or obs. summary stats.** Output is written to this file. Details depend on the model.
+
+**`-s` = SS to print.** Determines set of summary statistics to print. Set to 0 (default) for breeding value based summary statistics. This is the recommended option. Set to 1 for summary statistics computed for each genetic marker (SNP). This is not meant as a user option at this point (use with caution).
+
+**`-m` = Selection model.** Selects the form of function relating the environmental covariate to the selection differential. 0 = linear (default), 1 = step, 2 = sigmoid function.
+
+**`-p` = Prior prob. of non-zero selection.** Denotes the prior probability that each parameter of the selection function (a, b, and c if relevant) is non-zero. See the description of the spike-and-slab prior in Gompert & Bergland for details.
+
+**`-a` Lower bnd. for a.** Sets the lower bound of the uniform component of the prior on the intercept parameter (a).
+
+**`-c` Upper bnd. for a.** Sets the upper bound of the uniform component of the prior on the intercept parameter (a).
+
+**`-b` Lower bnd. for b.** Sets the lower bound of the uniform component of the prior on the slope parameter (b).
+
+**`-d` Upper bnd. for b.** Sets the upper bound of the uniform component of the prior on the slope parameter (b).
+
+**`-w` Lower bnd. for c.** Sets the lower bound of the uniform component of the prior on selection function parameter c.
+
+**`-x` Upper bnd. for c.** Sets the upper bound of the uniform component of the prior on selection function  parameter c.
 
 #Example analysis
 
