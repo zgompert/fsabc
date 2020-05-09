@@ -42,7 +42,7 @@ void usage(char * name){
   fprintf(stdout, "-x     Upper bnd. on U prior for sel. function cut [1]\n");
   
 
-  exit(1);
+  exit(0);
 }
 
 // ------ Functions for input and output ---------------
@@ -327,7 +327,7 @@ void getest(string resFile, dataset * data){
 // wf simulation wrapper function
 void runsim(dataset * data, param * params, int x, int ss){
 
-  int i, j;
+  int i, j;// k;
   
   // sample params from priors
   // QTL effects
@@ -358,6 +358,16 @@ void runsim(dataset * data, param * params, int x, int ss){
   for(j=0; j<data->nPops; j++){
     simpop(data, params, j);		   
   }
+  // UNCOMMENT to print full set of simulated allele freqs.
+  // for(i=0; i<data->nLoci; i++){
+  //   for(j=0; j<data->nPops; j++){
+  //     for(k=0; k<data->nGens; k++){
+  // 	cout << gsl_matrix_get(params->pp, i, j * data->nGens + k) << " ";
+  //     }
+  //   }
+  //   cout << endl;
+  // }
+  
   // compute derived parameters
   compdpar(data, params);
 
