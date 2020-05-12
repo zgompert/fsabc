@@ -682,7 +682,11 @@ void valsim(dataset * data, param * params, FILE * OUT){
 
 // wrapper function for observed summary statistics
 void calcobs(dataset * data, param * params, FILE * OUT, int ss){
-  int i;
+  int i, j, k, q;
+  double qn, qval, sumdpA;
+  
+  gsl_vector * mudpv;
+  
   
   // QTL effects
   samqtl(data, params); // users can supply model-averaged with pp 1 instead
@@ -714,6 +718,31 @@ void calcobs(dataset * data, param * params, FILE * OUT, int ss){
     }
   }
   fprintf(OUT,"\n");
+
+  // quantiles for change
+  mudpv = gsl_vector_calloc(data->nPops * (data->nGens - 1));
+  
+  for(j=0; j<data->nPops; j++){
+    for(k=0; k<(data->nGens-1); k++){
+      sumdpA = 0;
+      for(i=0; i<data->nLoci; i++){
+	sumdpA += gsl_vector_get(params->beta, i) * gsl_matrix_get(params->dpp, i, j *
+								   (data->nGens-1) + k);
+      }
+      gsl_vector_set(mudpv, j * (data->nGens - 1) + k, 2 * sumdpA);
+    }
+  }
+  
+  gsl_sort_vector(mudpv);
+      
+  for(q=1; q<=9; q++){
+    qn = (double) q/10.0;
+    qval = gsl_stats_quantile_from_sorted_data(mudpv->data,1,mudpv->size,qn);
+    fprintf(OUT,"%.5f ", qval);
+  }
+  fprintf(OUT,"\n");
+  
+  gsl_vector_free(mudpv);
    
 }
   
