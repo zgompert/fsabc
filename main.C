@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
     usage(argv[0]);
   }
   
-  while ((ch = getopt(argc, argv, "g:e:f:t:j:o:n:s:m:a:c:b:d:w:x:p:v:z:q:")) != -1){
+  while ((ch = getopt(argc, argv, "g:e:f:t:j:o:h:n:s:m:a:c:b:d:w:x:p:v:z:q:")) != -1){
     switch(ch){
     case 'g':
       geneFile = optarg;
@@ -96,6 +96,9 @@ int main(int argc, char *argv[]) {
       break;
     case 'o':
       outFile = optarg;
+      break;
+    case 'h':
+      data.sigma2 = atof(optarg);
       break;
     case 'n':
       nsims = atoi(optarg);

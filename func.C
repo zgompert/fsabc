@@ -30,6 +30,7 @@ void usage(char * name){
   fprintf(stdout, "-v     Binary, run posterior pred. validation mode [0]\n");
   fprintf(stdout, "-q     Binary, run observed summary stats. mode [0]\n");
   fprintf(stdout, "-o     Outfile for simulated or obs. summary stats. [out_fsabc.txt]\n");
+  fprintf(stdout, "-h     Phenotypic variance [1.0]\n");
   fprintf(stdout, "-n     Number of simulations [1000]\n");
   fprintf(stdout, "-s     SS to print: 0 = bv, 1 = snp, 2 = both [0]\n");
   fprintf(stdout, "-m     Selection model: 0 = linear, 1 = step, 2 = sigmoid [0]\n");
@@ -46,7 +47,6 @@ void usage(char * name){
 }
 
 // ------ Functions for input and output ---------------
-
 // read input from the infiles
 void getdata(string geneFile, string envFile, string missingFile, int obsss, dataset * data){
   int i, j;
