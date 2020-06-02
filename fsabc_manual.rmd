@@ -9,7 +9,7 @@ output: pdf_document
 
 `fsabc` implements an approximate Bayesian computation (ABC) method to detect and quantify fluctuating selection on polygenic traits from time-series data. The direction and magnitude of phenotypic selection is determined by the state of an environmental variable. The population-genomic consequences of selection are then modeled based on estimated genotype-phenotype associations. This allows inferences to be informed by patterns of change across multiple genetic loci, populations, and  generations. The goal of the model is to estimate the intensity of selection on the trait and how this varies by environment, as well as the extent to which this translates into selection on different genetic loci. Key assumptions of the model are that selection is always directional, that each locus explains a small proportion of the phenotypic variance (either because the trait is highly polygenic or has a large environmental variance) and that the causal variants (or linked loci) exhibit minimal linkage disequilibrium with each other such that each experiences genetic drift independently. The model also assumes that, at least over the duration of the population-genomic time series, mutation and gene flow are negligible and can be ignored.
 
-The program `fsabc` is written in `C++` with the Gnu Scientific Library (GSL). See Gompert & Bergland (XXXX) for a full description and evaluation of the method. Herein, we provide instructions for installing and running the program. 
+The program `fsabc` is written in `C++` with the Gnu Scientific Library (GSL). See Gompert (XXXX) for a full description and evaluation of the method. Herein, we provide instructions for installing and running the program. 
 
 #How to install `fsabc`
 
