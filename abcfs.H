@@ -11,7 +11,7 @@
 #include <gsl/gsl_sort.h>
 
 // macro definitions
-#define VERSION "0.2 -- 01 June 2020"
+#define VERSION "0.2.1 -- January 2021"
 
 extern gsl_rng * r;
 // function declarations
@@ -32,6 +32,7 @@ struct dataset{
   gsl_matrix_int * sampledData; // binary indicator  varaible, denotes number of actual generations between samples, nGens(-1) x nPops
   gsl_matrix * ne; // external samples of Ne, nNeSams x nPops; assumes constant per pop
   gsl_matrix * qtl; // pip and beta, nrow = nLoci, ncol = 2 pip then beta
+  gsl_matrix * samsize; // 2N for allele freqs, nrow = nGens, ncol = nPops
 
   gsl_matrix * params; // only for validation, post. estimates; samples x params
 };
@@ -73,6 +74,9 @@ struct param{
   // mean and sd of |si| (selection coef. on SNPs) across generations and pops and causal loci/QTL.
   double simn;
   double sisd;
+
+  // binary, include uncertainy in allele freqs.
+  int pdist;
 };
 
 // function definitions
@@ -81,6 +85,7 @@ void getdata(string geneFile, string envFile, string missingFile, int obsss, dat
 void getne(string neFile, dataset * data);
 void getqtl(string traitFile, dataset * data);
 void getest(string resFile, dataset * data);
+void getsamsize(string samsizeFile, dataset * data);
 void runsim(dataset * data, param * params, int x, int ss);
 void samqtl(dataset * data, param * params);
 void simpop(dataset * data, param * params, int j);

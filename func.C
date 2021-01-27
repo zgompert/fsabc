@@ -26,6 +26,7 @@ void usage(char * name){
   fprintf(stdout, "-f     Infile with varNe estimates\n");
   fprintf(stdout, "-t     Infile with trait genetic arch. estimates\n");
   fprintf(stdout, "-j     (optional) Infile with gens. between samples\n");
+  fprintf(stdout, "-u     (optional) Infile with sample sizes\n");
   fprintf(stdout, "-z     (optional) Infile parameter posterior samples\n");
   fprintf(stdout, "-v     Binary, run posterior pred. validation mode [0]\n");
   fprintf(stdout, "-q     Binary, run observed summary stats. mode [0]\n");
@@ -35,6 +36,7 @@ void usage(char * name){
   fprintf(stdout, "-s     SS to print: 0 = bv, 1 = snp, 2 = both [0]\n");
   fprintf(stdout, "-m     Selection model: 0 = linear, 1 = step, 2 = sigmoid [0]\n");
   fprintf(stdout, "-p     Prior prob. of non-zero selection by component [0.5]\n");
+  fprintf(stdout, "-k     Binary, model uncertainty in allele frequencies [0]\n");
   fprintf(stdout, "-a     Lower bnd. on U prior for sel. function intercept [-10]\n");
   fprintf(stdout, "-c     Upper bnd. on U prior for sel. function intercept [10]\n");
   fprintf(stdout, "-b     Lower bnd. on U prior for sel. function slope [-10]\n");
@@ -242,45 +244,46 @@ void getqtl(string traitFile, dataset * data){
 
 }
 
-// // read existing estimates of Ne
-// void getne(string neFile, dataset * data){
-//   int i, j;
-//   string line, element;
-//   ifstream infile;
-//   istringstream stream;
+// read sample size data
+void getsamsize(string samsizeFile, dataset * data){
+  int i, j;
+  string line, element;
+  ifstream infile;
+  istringstream stream;
 
-//   // read ne data, first line has dimensions, combes by samples, followed by samples of Ne
-//   infile.open(neFile.c_str());
-//   if (!infile){
-//     cerr << "Cannot open file " << neFile << endl;
-//     exit(1);
-//   }
+  // read data, first line has dimensions, generations then populations
+  infile.open(samsizeFile.c_str());
+  if (!infile){
+    cerr << "Cannot open file " << samsizeFile << endl;
+    exit(1);
+  }
 
-//   // read line with data dimensions
-//   getline(infile, line);
-//   stream.str(line);
-//   stream.clear();
-//   stream >> element; // number of posterior samples
-//   data->nNeSams = atoi(element.c_str());
-//   stream >> element; // number of pops 
+  // read line with data dimensions
+  getline(infile, line);
+  stream.str(line);
+  stream.clear();
+  // have dimensions already, but read them anyways
+  stream >> element; // number of generations
+  stream >> element; // number of pops 
  
 
-//   // dynamic memory allocation for existing Ne estimates
-//   data->ne = gsl_matrix_calloc(data->nNeSams, data->nPops);
+  // dynamic memory allocation for existing Ne estimates
+  data->samsize = gsl_matrix_calloc(data->nGens, data->nPops);
 
-//   // read and store Ne estimates
-//   for(i=0; i<data->nNeSams; i++){
-//     getline(infile, line); 
-//     stream.str(line);
-//     stream.clear();
-//     for(j=0; j<data->nPops; j++){
-//       stream >> element;
-//       gsl_matrix_set(data->ne, i, j, atof(element.c_str()));
-//     }
-//   }
-//   infile.close();
+  // read and store estimates
+  for(i=0; i<data->nGens; i++){
+    getline(infile, line); 
+    stream.str(line);
+    stream.clear();
+    for(j=0; j<data->nPops; j++){
+      stream >> element;
+      gsl_matrix_set(data->samsize, i, j, atof(element.c_str()));
+    }
+  }
+  infile.close();
 
-// }
+}
+
 
  // read in parameter estimates for posterior predictive check
 void getest(string resFile, dataset * data){
@@ -405,7 +408,8 @@ void simpop(dataset * data, param * params, int j){
   int i, k, x, ii;
   int interval;
   double S, si;
-  double p, dp, pprime;
+  double p, dp, pprime, pold;
+  double ssize1, ssize2;
   unsigned int Ne;
   int N;
 
@@ -417,6 +421,10 @@ void simpop(dataset * data, param * params, int j){
   // set initial allele freqs. to p0
   for(i=0; i<data->nLoci; i++){
     p = gsl_matrix_get(data->p0, i, j);
+    if(params->pdist == 1){
+      ssize1 = gsl_matrix_get(data->samsize, 0, j); // row 0 for gen. 0
+      p = gsl_ran_beta(r, 0.5 + (p * ssize1), 0.5 + ((1-p) * ssize1));
+    }  
     gsl_matrix_set(params->pp, i, j * data->nGens, p); 
   }
   
@@ -444,7 +452,7 @@ void simpop(dataset * data, param * params, int j){
     interval = gsl_matrix_int_get(data->sampledData, k, j); // spacing
     for(i=0; i<data->nLoci; i++){
       p = gsl_matrix_get(params->pp, i, j * data->nGens + k);
-      for(ii=0; ii<interval; ii++){ // repeate for number of intervals between samples
+      for(ii=0; ii<interval; ii++){ // repeat for number of intervals between samples
 	N = 0;
 	// calculate/simulate dp by selection and drift for each SNP
 	
@@ -476,6 +484,14 @@ void simpop(dataset * data, param * params, int j){
 	  gsl_matrix_set(params->pp, i, j * data->nGens + k + 1, p); // store allele freq.
 	  // obs dp
 	  dp = p - gsl_matrix_get(params->pp, i, j * data->nGens + k);
+	  // add noise to dp if unc. in allele freqs
+	  if(params->pdist==1){
+	    ssize1 = gsl_matrix_get(data->samsize, k+1, j); //need k+1 bc next gen.
+	    ssize2 = gsl_matrix_get(data->samsize, k, j); //need past gen
+	    pold = gsl_matrix_get(params->pp, i, j * data->nGens + k);
+	    dp = gsl_ran_beta(r, 0.5 + (p * ssize1), 0.5 + ((1-p) * ssize1)) -
+	      gsl_ran_beta(r, 0.5 + (pold * ssize2), 0.5 + ((1-pold) * ssize2));
+	  }
 	  gsl_matrix_set(params->dpp, i, j * (data->nGens - 1) + k, dp); // store allele freq. change
 	}
       }
@@ -750,12 +766,19 @@ void calcobs(dataset * data, param * params, FILE * OUT, int ss){
 void calcobsdpp(dataset * data, param * params){
   int i, j, k;
   double dp, pp0, pp1;
+  double ssize1, ssize0;
 
   for(j=0; j<data->nPops; j++){
     for(k=0; k<(data->nGens-1); k++){
       for(i=0; i<data->nLoci; i++){
 	pp0 = gsl_matrix_get(data->pall, i, j * data->nGens + k);
 	pp1 = gsl_matrix_get(data->pall, i, j * data->nGens + k + 1);
+	if(params->pdist==1){ // add uncertainty
+	  ssize1 = gsl_matrix_get(data->samsize, k+1, j); //need k+1 bc next gen.
+	  ssize0 = gsl_matrix_get(data->samsize, k, j); //need past gen
+	  pp1 = gsl_ran_beta(r, 0.5 + (pp1 * ssize1), 0.5 + ((1-pp1) * ssize1));
+	  pp0 = gsl_ran_beta(r, 0.5 + (pp0 * ssize0), 0.5 + ((1-pp0) * ssize0));
+	}
 	dp = pp1 - pp0;
 	gsl_matrix_set(params->dpp, i, j * (data->nGens - 1) + k, dp);
       }

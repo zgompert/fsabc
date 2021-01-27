@@ -11,10 +11,9 @@
 // traitFile=trait gen arch. estimates, one row per SNP, pip followed by beta | lambda = 1
 // Additional optional files
 // missingFile=binary indicator variable, was that population x generation sampled (1=TRUE); one row per generation, one column per pop, note that first generation should be left off 
+// samsizeFile=sample sizes (in gene copies, 2N for diploids) for each population (column) and generation (row) to model uncertainty in allele frequencies
 
 // NOTE: files begin with a row giving the dimensions of the file (row then column)
-
-// "obs" mode requires the following files
 
 #include <cmath>
 #include <iostream>
@@ -56,6 +55,7 @@ int main(int argc, char *argv[]) {
   string missingFile = "undefined";
   string resFile = "undefined"; // samples from posterior
   string outFile = "out_fsabc.txt";
+  string samsizeFile = "undefined";
   
   dataset data;
   param params;
@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
   params.fsClb = -1;
   params.fsCub = 1;
   params.prsel = 0.5;
+  params.pdist = 0; // binary, account for uncertainty in allele frequencies
 
   
   // get command line arguments
@@ -77,7 +78,7 @@ int main(int argc, char *argv[]) {
     usage(argv[0]);
   }
   
-  while ((ch = getopt(argc, argv, "g:e:f:t:j:o:h:n:s:m:a:c:b:d:w:x:p:v:z:q:")) != -1){
+  while ((ch = getopt(argc, argv, "g:e:f:t:j:u:o:h:n:s:m:a:c:b:d:w:x:p:k:v:z:q:")) != -1){
     switch(ch){
     case 'g':
       geneFile = optarg;
@@ -93,6 +94,9 @@ int main(int argc, char *argv[]) {
       break;
     case 'j':
       missingFile = optarg;
+      break;
+    case 'u':
+      samsizeFile = optarg;
       break;
     case 'o':
       outFile = optarg;
@@ -130,6 +134,9 @@ int main(int argc, char *argv[]) {
     case 'p':
       params.prsel = atof(optarg);
       break;
+    case 'k':
+      params.pdist = atoi(optarg);
+      break;
     case 'v':
       validate = atoi(optarg);
       break;
@@ -166,6 +173,12 @@ int main(int argc, char *argv[]) {
   cout << "Reading GWA data " << traitFile << endl;
   getqtl(traitFile,&data);
 
+  // read sample sizes for allele freqs. if included
+  if(params.pdist==1){
+    cout << "Reading sample size file for allele freq. uncertainty " << samsizeFile << endl;
+    getsamsize(samsizeFile,&data);
+  }
+    
   // read params if present
   if(validate==1){
     cout << "Reading parameter estimates for validation " << resFile << endl;

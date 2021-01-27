@@ -1,7 +1,7 @@
 ---
-title: Manual for `fsabc` version 0.2
+title: Manual for `fsabc` version 0.2.1
 author: Zach Gompert
-date: 8, May, 2020
+date: 27, January, 2021
 output: pdf_document
 ---
 
@@ -36,7 +36,7 @@ You must have the [Gnu Scientific Library](https://www.gnu.org/software/gsl/) in
 `fsabc` requires four data sources. 
 
 
-**Estimates of allele frequencies in one or more populations for multiple time points (ideally consecutive generations).** The method assumes these are known with little or no error. The method requires a set of genetic markers (e.g., SNPs) known to affect the trait of interest, or as will be more commonly the case, a set of markers statistically associated with the trait (i.e., in linkage disequilibrium with the unknown causal variants). The precise format of the file depends on the run mode (see below for details). 
+**Estimates of allele frequencies in one or more populations for multiple time points (ideally consecutive generations).** By default, the method assumes these are known with little or no error. However, there is an option to incorporate uncertainty in allele frequences based on sample sizes. The method requires a set of genetic markers (e.g., SNPs) known to affect the trait of interest, or as will be more commonly the case, a set of markers statistically associated with the trait (i.e., in linkage disequilibrium with the unknown causal variants). The precise format of the file depends on the run mode (see below for details). 
 
 When running the program in simulation or posterior predictive mode, the first row is a header with two values (separated by white space), the number of genetic markers and the number of populations. This is followed by one row per genetic marker. Each row gives the initial allele frequency (for one of the two alleles, e.g., the minor allele) for each population. Thus, there are as many columns as populations. See `sim_p0.txt` for an example with 100 SNPs and 10 populations (in this example all 10 populations have the same initial allele frequencies). 
 
@@ -68,6 +68,8 @@ At minimum `fsabc` requires the user to provide files with allele frequency data
 
 **`-j` = (Optional) infile with the number of generations between samples.** By default, the software assumes one generation spacing between samples for population allele frequencies (and corresponding environmental data). This optional file allows other spacing to be specified. If included, this file has a header row with the number of generations minus one and the number of populations. Each subsequent row gives the spacing for the samples for a population, where the value given is the number of generations (this is used for simulating evolution). The first column gives the interval between the first and second sample, hence the need for one fewer entry than the number of  generations.
 
+**`-u` = (Optional) infile with sample sizes.** By default, the software assumes allele frequencies are known precisely. This optional file allows information on sample sizes to be used to model uncertainty in allele frequencies. If included, this file has a header row with the number of generations and the number of populations. Each subsequent row gives the sample size in terms of gene copies for a population (one entry/column per generation). For diploids, the number entered should be twice the number of individuals sequenced.
+
 **`z` = (Optional) infile with parameter posterior samples.** This is used only for posterior predictive (validation) mode. This file contains samples from the posterior distribution for the selection differential model parameters a, b, and c (if c is in the model). The first row is a header with the number of samples and parameters. This is followed by one row per posterior sample with the parameter values.
 
 **`-v` = Binary, run posterior pred. validation mode.** Set to 1 (true) to run the program in posterior predictive mode. The default is 0 (false).
@@ -83,6 +85,8 @@ At minimum `fsabc` requires the user to provide files with allele frequency data
 **`-m` = Selection model.** Specifies the mathematical function relating the environmental covariate to the selection differential. 0 = linear (default), 1 = step, 2 = sigmoid function.
 
 **`-p` = Prior prob. of non-zero selection.** Denotes the prior probability that each parameter of the selection function (a, b, and c if relevant) is non-zero. See the description of the spike-and-slab prior in Gompert & Bergland for details.
+
+**`-k` = Binary, model uncertainty in allele frequencies.** Set to 1 (true) to run allow for uncertainty in allele frequences based on sample sizes. Uncertainty is modeled assuming a beta distribution centered on the estimate or simulated value with scale parameters given by the sample size plus 0.5 (the latter is equivalent to including a Jeffery's prior). The default is 0 (false).
 
 **`-a` Lower bound for prior on a.** Sets the lower bound of the uniform component of the prior on the intercept parameter (a).
 
